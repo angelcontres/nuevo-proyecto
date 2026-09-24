@@ -87,39 +87,89 @@ Este nivel detalla la arquitectura interna del contenedor **Quarkus Backend**, m
 
 ```mermaid
 flowchart TD
-    subgraph QuarkusBackend [" Contenedor Backend Quarkus (Java 21) "]
-        feedRes["FeedResource<br/><i>[JAX-RS / RESTEasy]</i><br/>GET /api/feed/{userId}"]
-        postRes["PostResource<br/><i>[JAX-RS / RESTEasy]</i><br/>POST /api/posts<br/>POST /api/posts/{id}/like"]
-        userRes["UserGraphResource<br/><i>[JAX-RS / RESTEasy]</i><br/>POST /api/users<br/>POST /api/users/{id}/follow"]
-        chatWs["ChatWebSocket<br/><i>[ServerEndpoint]</i><br/>/chat/{userId}<br/>Enrutador de mensajes 1 a 1"]
+    subgraph FrontendFeatures [" Frontend React SPA (Feature-Driven) "]
+        featFeed["features/feed<br/>(FeedList, PostCard, feedApi)"]
+        featChat["features/chat<br/>(ChatWidget, chatSocketManager)"]
+        featNet["features/network<br/>(UserSuggestionsCard, networkApi)"]
+        sharedNav["shared/components/Navbar<br/>(Tailwind CSS + Lucide Icons)"]
+    end
 
-        grafoRepo["GrafoRepository<br/><i>[ApplicationScoped]</i><br/>Ejecutor de las 5 consultas Cypher obligatorias en Neo4j"]
-        s3Service["S3StorageService<br/><i>[ApplicationScoped]</i><br/>Gestor de subida de imágenes a MinIO"]
-        pushService["NotificationPushService<br/><i>[ApplicationScoped]</i><br/>Cifrado de payload VAPID y despacho Push"]
+    subgraph QuarkusHexagonal [" Backend Quarkus (Arquitectura Hexagonal / Ports & Adapters) "]
+        subgraph InAdapters [" Adaptadores de Entrada (Driving Adapters) "]
+            feedRes["FeedResource<br/><i>[REST /api/feed]</i>"]
+            postRes["PostResource<br/><i>[REST /api/posts]</i>"]
+            userRes["UserGraphResource<br/><i>[REST /api/users]</i>"]
+            chatWs["ChatWebSocket<br/><i>[WebSocket /chat/{userId}]</i>"]
+        end
+
+        subgraph InPorts [" Puertos de Entrada (Inbound Ports / Use Cases) "]
+            feedUseCase["«interface»<br/>ObtenerFeedUseCase"]
+            postUseCase["«interface»<br/>CrearPostUseCase"]
+            userUseCase["«interface»<br/>GestionarGrafoSocialUseCase"]
+        end
+
+        subgraph AppServices [" Servicios de Aplicación (Application Core) "]
+            feedService["FeedApplicationService"]
+            postService["PostApplicationService"]
+            userService["UserGraphApplicationService"]
+        end
+
+        subgraph OutPorts [" Puertos de Salida (Outbound Ports / SPI) "]
+            grafoPort["«interface»<br/>GrafoPersistencePort"]
+            storagePort["«interface»<br/>StorageMultimediaPort"]
+            pushPort["«interface»<br/>NotificationPushPort"]
+        end
+
+        subgraph OutAdapters [" Adaptadores de Salida (Driven Adapters) "]
+            neo4jAdapter["Neo4jGrafoAdapter<br/><i>(Driver Bolt / 5 Cypher Queries)</i>"]
+            s3Adapter["MinioS3StorageAdapter<br/><i>(AWS SDK S3 PutObject)</i>"]
+            pushAdapter["WebPushNotificationAdapter<br/><i>(VAPID Crypto Dispatcher)</i>"]
+        end
     end
 
     neo4jDb[("Neo4j Bolt:7687")]
     minioApi[("MinIO HTTP:9000")]
-    webPushApi["Web Push Gateway"]
+    webPushApi["Web Push Gateway (VAPID)"]
 
-    feedRes -->|"Consulta feed de 2 saltos"| grafoRepo
-    postRes -->|"Crea nodo Post y relación PUBLICA"| grafoRepo
-    postRes -->|"Sube imagen adjunta"| s3Service
-    postRes -->|"Dispara notificación a seguidores"| pushService
-    userRes -->|"Gestiona relaciones SIGUE y sugerencias"| grafoRepo
-    chatWs -->|"Transmite mensaje entre sesiones en memoria"| chatWs
+    featFeed -->|"HTTP REST"| feedRes
+    featFeed -->|"HTTP REST"| postRes
+    featNet -->|"HTTP REST"| userRes
+    featChat -->|"WebSocket"| chatWs
 
-    grafoRepo -->|"Driver oficial Bolt"| neo4jDb
-    s3Service -->|"AWS S3 SDK Client"| minioApi
-    pushService -->|"HTTP Push Request"| webPushApi
+    feedRes --> feedUseCase
+    postRes --> postUseCase
+    userRes --> userUseCase
+
+    feedUseCase -.-> feedService
+    postUseCase -.-> postService
+    userUseCase -.-> userService
+
+    feedService --> grafoPort
+    postService --> grafoPort
+    postService --> pushPort
+    userService --> grafoPort
+
+    grafoPort -.-> neo4jAdapter
+    storagePort -.-> s3Adapter
+    pushPort -.-> pushAdapter
+
+    neo4jAdapter -->|"Bolt Cypher Protocol"| neo4jDb
+    s3Adapter -->|"S3 API Protocol"| minioApi
+    pushAdapter -->|"HTTP VAPID Protocol"| webPushApi
 ```
 
 ### Componentes Clave:
-- **`FeedResource`:** Resuelve la solicitud de feed del usuario invocando la consulta de 2 saltos en Neo4j.
-- **`PostResource`:** Recibe las publicaciones, coordina el almacenamiento de la imagen en MinIO mediante `S3StorageService`, persiste los nodos en Neo4j y gatilla `NotificationPushService`.
-- **`UserGraphResource`:** Expone endpoints para crear conexiones `[:SIGUE]`, calcular amigos sugeridos de 2º nivel y calcular el camino más corto (*shortest path*).
-- **`ChatWebSocket`:** Mantiene un registro de sesiones activas concurrentes para enrutar mensajes directamente de emisor a receptor sin latencia.
-- **`GrafoRepository`:** Centraliza las 5 consultas Cypher no triviales utilizando transacciones administradas del driver oficial de Neo4j.
+1. **Frontend Feature-Driven con Tailwind CSS:**
+   - **`features/feed`**: Componentes `PostCard`, `CreatePostForm` y `FeedList` consumiendo la API de feed.
+   - **`features/chat`**: Componente `ChatWidget` con conexión bidireccional inmediata mediante `chatSocketManager`.
+   - **`features/network`**: Componente `UserSuggestionsCard` para descubrir amigos calculados en 2º grado.
+   - **`shared`**: Componentes comunes (`Navbar`) estilizados con utilidades Tailwind y Lucide Icons.
+
+2. **Backend Hexagonal (Ports and Adapters):**
+   - **Puertos de Entrada (Use Cases):** `ObtenerFeedUseCase`, `CrearPostUseCase`, `GestionarGrafoSocialUseCase`.
+   - **Servicios de Aplicación:** `FeedApplicationService`, `PostApplicationService`, `UserGraphApplicationService`.
+   - **Puertos de Salida (SPI):** `GrafoPersistencePort`, `StorageMultimediaPort`, `NotificationPushPort`.
+   - **Adaptadores de Salida (Driven):** `Neo4jGrafoAdapter` (con las 5 consultas Cypher no triviales), `MinioS3StorageAdapter` y `WebPushNotificationAdapter`.
 
 ---
 

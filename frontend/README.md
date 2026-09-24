@@ -1,13 +1,38 @@
-# Frontend React - Red Social Distribuida
+# Frontend React - Red Social Distribuida (Feature-Driven + Tailwind CSS)
 
-Single Page Application (SPA) construida con **React 18 + TypeScript + Vite**, empaquetada con **Nginx** para producción y dotada de un **Service Worker** para soporte de notificaciones **Web Push (VAPID)**.
+Single Page Application (SPA) construida con **React 18 + TypeScript + Vite**, estilizada de forma integral con **Tailwind CSS + Lucide Icons**, empaquetada con **Nginx** para producción y dotada de un **Service Worker** para soporte de notificaciones **Web Push (VAPID)**.
 
-## Características
+## Arquitectura Basada en Módulos / Características (Feature-Driven)
 
-- **Feed Dinámico:** Renderizado de publicaciones basado en el grafo de seguimiento social.
-- **Sugerencias Inteligentes:** Conexiones sugeridas a 2 saltos de distancia calculadas en Neo4j.
-- **Chat en Vivo:** Comunicación bidireccional inmediata mediante WebSockets sin sobrecarga de sondeo.
-- **Web Push Notifications:** Recepción de alertas nativas en segundo plano mediante Service Worker (`public/sw.js`).
+```text
+src/
+├── features/                        # Módulos verticales por dominio de la red social
+│   ├── feed/                        # US-05: Feed por Grafo Social
+│   │   ├── components/              # PostCard, CreatePostForm, FeedList
+│   │   ├── services/                # feedApi.ts
+│   │   └── types/                   # post.types.ts
+│   │
+│   ├── network/                     # US-02 y US-03: Grafo de Amigos y Sugerencias de 2do Grado
+│   │   ├── components/              # UserSuggestionsCard.tsx
+│   │   ├── services/                # networkApi.ts
+│   │   └── types/                   # network.types.ts
+│   │
+│   ├── chat/                        # US-07: Mensajería 1 a 1 en tiempo real
+│   │   ├── components/              # ChatWidget.tsx
+│   │   ├── services/                # chatSocket.ts
+│   │   └── types/                   # chat.types.ts
+│   │
+│   └── notifications/               # US-08: Web Push
+│       └── services/                # pushService.ts
+│
+└── shared/                          # Componentes UI reutilizables
+    └── components/                  # Navbar.tsx con Tailwind CSS y glassmorphism
+```
+
+## Estilos y Diseño
+- **Tailwind CSS 3.4**: Clases de utilidad modernas sin CSS redundante.
+- **Lucide React**: Iconografía minimalista para redes sociales.
+- **PWA / Service Worker**: `public/sw.js` para recibir alertas nativas del sistema operativo en segundo plano.
 
 ## Ejecución Local
 

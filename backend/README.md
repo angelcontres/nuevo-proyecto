@@ -1,16 +1,30 @@
-# Backend Quarkus - Red Social Distribuida
+# Backend Quarkus - Red Social Distribuida (Arquitectura Hexagonal)
 
-Servicio orquestador lógico implementado con **Quarkus 3 (Java 21)**, integrando **Neo4j** para el grafo social, **MinIO (S3)** para contenido multimedia, **WebSockets** para mensajería directa y **Web Push (VAPID)** para alertas en segundo plano.
+Servicio orquestador lógico implementado con **Quarkus 3 (Java 21)** siguiendo los principios de la **Arquitectura Hexagonal (Ports & Adapters)**, desacoplando el núcleo de negocio de los detalles de infraestructura (**Neo4j**, **MinIO S3**, **WebSockets** y **Web Push VAPID**).
 
-## Estructura del Código
+## Estructura Hexagonal del Código
 
 ```text
 src/main/java/ec/edu/upse/redsocial/
-├── model/           # Entidades (:Usuario, :Post, SugerenciaUsuario, MensajeChat)
-├── repository/      # Repositorio Neo4j con las 5 consultas Cypher no triviales
-├── resource/        # Endpoints REST (Feed, Post, UserGraph)
-├── service/         # S3StorageService (MinIO), NotificationPushService (VAPID)
-└── websocket/       # ChatWebSocket para mensajería 1 a 1 en tiempo real
+├── domain/                          # Núcleo del Dominio (Puro Java, sin frameworks)
+│   ├── model/                       # Entidades: Usuario, Post, SugerenciaUsuario, MensajeChat
+│   └── port/                        # Interfaces que definen los contratos del sistema
+│       ├── in/                      # Puertos de Entrada / Casos de Uso (ObtenerFeedUseCase, CrearPostUseCase, etc.)
+│       └── out/                     # Puertos de Salida / SPI (GrafoPersistencePort, StorageMultimediaPort, etc.)
+│
+├── application/                     # Capa de Aplicación
+│   └── service/                     # Implementación de Casos de Uso (FeedApplicationService, PostApplicationService, etc.)
+│
+└── infrastructure/                  # Capa de Infraestructura (Adaptadores)
+    └── adapter/
+        ├── in/                      # Adaptadores de Entrada (Driving / Primarios)
+        │   ├── rest/                # Endpoints JAX-RS / RESTEasy Reactive (FeedResource, PostResource, UserGraphResource)
+        │   └── websocket/           # Endpoint WebSocket Server (ChatWebSocket)
+        │
+        └── out/                     # Adaptadores de Salida (Driven / Secundarios)
+            ├── neo4j/               # Neo4jGrafoAdapter (Las 5 consultas Cypher obligatorias vía Bolt)
+            ├── s3/                  # MinioS3StorageAdapter (Cliente AWS SDK S3 para multimedia)
+            └── push/                # WebPushNotificationAdapter (Cifrado y despacho VAPID)
 ```
 
 ## Ejecución Local en Modo Desarrollo
