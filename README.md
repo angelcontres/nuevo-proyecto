@@ -1,243 +1,319 @@
-```typescript
+﻿```typescript
 Desarrollado por:
 
 - Paulo Orrala
 - Carlos Patiño
 - Angel Villon
 ```
-```
-```
+# **Red Social Distribuida \- Especificación de Arquitectura, Backlog y Ejecución**
 
-# **Product Backlog & Planificación de Sistema \- Red Social**
+Guía integral para el diseño, implementación, justificación técnica y despliegue del sistema distribuido conforme a los requerimientos de la actividad práctica.
 
-Este documento consolida el análisis de requerimientos, la estimación consensuada en Story Points (Planning Poker), el plan de Sprints y los criterios de aceptación en formato BDD/Gherkin para el desarrollo de la plataforma.
+## **1\. Diagrama y Flujo de la Arquitectura Distribuida**
 
-## **1\. Resumen de Estimación y Consenso de Esfuerzo**
+                    ┌─────────────────────────┐  
+                    │      React Frontend     │  
+                    │   (SPA \+ ServiceWorker) │  
+                    └────────────┬────────────┘  
+                                 │  
+             HTTP REST (JSON)    │    WebSocket (WSS)  
+             Operaciones CRUD    │    Chat Bidireccional  
+                                 │  
+                    ┌────────────▼────────────┐  
+                    │  Quarkus Backend (Java) │  
+                    │   (Orquestador Lógico)  │  
+                    └───┬─────────────┬───────┘  
+                        │             │  
+       Cypher (Bolt:7687)│             │ S3 API (HTTP:9000)  
+       Grafo Social     │             │ Binarios Multimedia  
+                        │             │  
+                ┌───────▼──────┐    ┌─▼──────────────┐  
+                │    Neo4j     │    │  MinIO (S3)    │  
+                │ Base Grafos  │    │ Object Storage │  
+                └──────────────┘    └────────────────┘  
+                        │  
+                  Web Push (VAPID)  
+                        │  
+                ┌───────▼──────────────┐  
+                │ Navegador de Usuario │  
+                │   (OS Notification)  │  
+                └──────────────────────┘
 
-Se aplica la secuencia estándar de Fibonacci (![][image1]) para consolidar las votaciones de dificultad emitidas por el equipo de desarrollo:
+### **Justificación de Tecnologías y Mecanismos de Comunicación**
 
-| Req. Original | ID | Historia de Usuario | Votos Registrados | Consenso Final (SP) | Justificación Técnica |
-| :---- | :---- | :---- | :---- | :---- | :---- |
-| **11** | **US-01** | Registro y Autenticación | \[1\] | **1 SP** | Hash seguro de contraseñas, validación de correo y persistencia básica de sesión (JWT). |
-| **5, 6** | **US-02** | Creación y Perfil de Usuario | \[1\]\[2\], \[1\] | **2 SP** | CRUD de usuario, validaciones de campos y subida/almacenamiento de multimedia (avatar). |
-| **3, 8** | **US-03** | Publicaciones (Texto \+ Imagen) | \[2\], \[2\]\[3\] | **3 SP** | Formulario multipart, compresión/subida a CDN/S3 y relación de autoría con publicaciones. |
-| **4** | **US-04** | Interacciones (Likes y Comentarios) | \[3\]\[ \]\[ \] | **3 SP** | Manejo de integridad referencial, restricción única (user\_id, post\_id) para likes y árbol de comentarios. |
-| **7, 10** | **US-05** | Feed con Scroll Infinito (Últimas 2 sem.) | \[4\]\[4\]\[5\], \[3\] | **5 SP** | Filtrado temporal indexado (created\_at \>= NOW() \- 14d), paginación por cursor y scroll infinito frontend. |
-| **2** | **US-06** | Mensajería Directa 1 a 1 | \[4\] ![][image2] Fib. | **5 SP** | Arquitectura bidireccional (WebSockets), persistencia de historial de chat y estado de mensajes. |
-| **1** | **US-07** | Notificaciones en Tiempo Real | \[3\]\[5\]\[5\] | **5 SP** | Arquitectura reactiva / bus de eventos para emitir alertas push/in-app ante interacciones y perfil. |
+| Necesidad del Sistema | Mecanismo Implementado | ¿Por qué esta tecnología? | ¿Qué problema resuelve? |
+| :---- | :---- | :---- | :---- |
+| **Operaciones Transaccionales** | **REST / HTTP** | Protocolo sin estado (*stateless*), semántica estándar (GET, POST, DELETE). | Creación de cuentas, inicio de sesión, publicación y seguimiento sin sobrecoste de canal abierto. |
+| **Chat en Vivo 1 a 1** | **WebSockets** | Conexión bidireccional TCP dúplex persistente con bajísima latencia. | Elimina la sobrecarga de cabeceras HTTP y el consumo ineficiente de CPU del *polling* periódico. |
+| **Alertas fuera de la app** | **Web Push (VAPID)** | Estándar W3C soportado por el sistema operativo mediante *Service Workers*. | Permite notificar a los usuarios aunque tengan la pestaña cerrada o la aplicación en segundo plano. |
+| **Grafo Social y Recomendación** | **Neo4j (Cypher)** | *Index-free adjacency*: cada nodo almacena punteros directos a sus relaciones adyacentes (![][image1] por salto). | Evita costosos ![][image2] relacionales recursivos al consultar feeds, amigos en común o sugerencias de múltiples saltos. |
+| **Multimedia de Publicaciones** | **MinIO (S3 Compatible)** | Almacenamiento desacoplado orientado a objetos con metadata. | Mantiene la base de datos de grafos liviana, delegando la persistencia de binarios pesados a un sistema escalable. |
+| **Despliegue y Reproducibilidad** | **Docker & Compose** | Empaquetado inmutable y redes virtuales puente (*bridge*). | Garantiza que la topología distribuida arranque con un solo comando sin discrepancias de entorno. |
 
-**Carga Total del Proyecto:** **24 Story Points (SP)**
+## **2\. Modelo de Grafos en Neo4j**
 
-## **2\. Planificación de Sprints (Roadmap Incremental)**
+### **Nodos y Propiedades**
 
-Suponiendo una velocidad sostenida de **6 a 8 Story Points por Sprint**:
+* (:Usuario {id, username, email, nombre, avatarUrl, pushSubscriptionJson})  
+* (:Post {id, texto, mediaUrl, fechaCreacion})
 
-\[ Sprint 1 (3 SP) \] ──► \[ Sprint 2 (6 SP) \] ──► \[ Sprint 3 (5 SP) \] ──► \[ Sprint 4 (10 SP / 2 Sprints) \]  
-  Auth & Perfiles         Posts & Feedback        Feed & Scroll 14d         Chat 1a1 & Notificaciones
+### **Relaciones**
 
-### **Sprint 1: Autenticación e Identidad Base (3 SP)**
+* (:Usuario)-\[:SIGUE {desde: timestamp}\]-\>(:Usuario)  
+* (:Usuario)-\[:PUBLICA\]-\>(:Post)  
+* (:Usuario)-\[:REACCIONA {tipo: 'LIKE', fecha: timestamp}\]-\>(:Post)
 
-* **Objetivo:** Disponer del entorno funcional, modelo de usuarios y control de sesiones.  
-* **Historias:**  
-  * **US-01:** Registro y Autenticación de Usuarios (1 SP)  
-  * **US-02:** Configuración y Personalización de Perfil (2 SP)
+## **3\. Las 5 Consultas Cypher Obligatorias (No Triviales)**
 
-### **Sprint 2: Motor de Contenido e Interacción (6 SP)**
+### **1\. Feed Cronológico Filtrado por Grafo Social (2 Saltos)**
 
-* **Objetivo:** Permitir que los usuarios generen contenido multimedia y reaccionen entre sí.  
-* **Historias:**  
-  * **US-03:** Creación de Publicaciones con Texto e Imágenes (3 SP)  
-  * **US-04:** Reacciones y Comentarios en Publicaciones (3 SP)
+Obtiene únicamente las publicaciones creadas por los usuarios que el solicitante sigue:
 
-### **Sprint 3: Consumo y Optimización de Contenido (5 SP)**
+MATCH (u:Usuario {id: \$userId})-\[:SIGUE\]-\>(amigo:Usuario)-\[:PUBLICA\]-\>(p:Post)  
+OPTIONAL MATCH (p)\<-\[r:REACCIONA\]-(:Usuario)  
+RETURN p.id AS id,   
+       p.texto AS texto,   
+       p.mediaUrl AS mediaUrl,   
+       p.fechaCreacion AS fecha,  
+       amigo.id AS autorId,   
+       amigo.username AS autorUsername,   
+       amigo.avatarUrl AS autorAvatar,  
+       count(r) AS totalLikes,  
+       EXISTS((u)-\[:REACCIONA\]-\>(p)) AS likedByMe  
+ORDER BY p.fechaCreacion DESC  
+LIMIT 20;
 
-* **Objetivo:** Brindar una experiencia fluida de lectura con limitación temporal y rendimiento optimizado.  
-* **Historias:**  
-  * **US-05:** Feed con Scroll Infinito y ventana de 14 días (5 SP)
+### **2\. Algoritmo de Sugerencia de Usuarios (Red Social de Segundo Nivel)**
 
-### **Sprint 4: Comunicación en Tiempo Real (10 SP)**
+Calcula recomendaciones basadas en conexiones mutuas ("amigos de amigos" que aún no sigue):
 
-*(Nota: Si se busca mantener estrictamente un máximo de 8 SP, puede dividirse en Sprint 4 para Chat y Sprint 5 para Notificaciones).*
+MATCH (u:Usuario {id: \$userId})-\[:SIGUE\]-\>(intermedio:Usuario)-\[:SIGUE\]-\>(sugerido:Usuario)  
+WHERE u \<\> sugerido AND NOT (u)-\[:SIGUE\]-\>(sugerido)  
+RETURN sugerido.id AS id,   
+       sugerido.username AS username,   
+       sugerido.nombre AS nombre,   
+       sugerido.avatarUrl AS avatar,  
+       count(intermedio) AS conexionesEnComun,  
+       collect(intermedio.username) AS seguidosEnComun  
+ORDER BY conexionesEnComun DESC  
+LIMIT 5;
 
-* **Objetivo:** Conectar a los usuarios mediante mensajería directa y notificaciones reactivas instantáneas.  
-* **Historias:**  
-  * **US-06:** Mensajería Directa 1 a 1 (5 SP)  
-  * **US-07:** Notificaciones en Vivo por Interacción (5 SP)
+### **3\. Seguidores y Conexiones en Común entre Dos Perfiles**
 
-## **3\. Product Backlog Detallado**
+Identifica la intersección de seguimiento entre dos perfiles analizados:
 
-### **US-01: Registro de Usuarios y Autenticación**
+MATCH (u1:Usuario {id: \\(userA})\<-\[:SIGUE\]-(comun:Usuario)-\[:SIGUE\]-\>(u2:Usuario {id:\\)userB})  
+RETURN comun.id AS id,   
+       comun.username AS username,   
+       comun.nombre AS nombre,   
+       comun.avatarUrl AS avatar;
 
-* **Descripción:** Como nuevo visitante, quiero registrarme en la plataforma con mi correo y una contraseña segura, para tener una cuenta propia en la red social.  
-* **Prioridad MoSCoW:** Must Have  
-* **Estimación:** 1 SP  
-* **Criterios de Aceptación:**  
-  1. El formulario valida formato válido de correo electrónico y contraseña de mínimo 8 caracteres.  
-  2. No se permite duplicidad de correos en la base de datos (retorna HTTP 409 Conflict).  
-  3. La contraseña se almacena encriptada utilizando algoritmos seguros (bcrypt o argon2).  
-  4. Al completar el registro con éxito, el sistema emite el token de sesión y redirige al setup de perfil.
+### **4\. Grado de Separación y Camino Más Corto (Shortest Path)**
 
-### **US-02: Creación y Configuración del Perfil**
+Calcula la cadena de conexiones mínimas que unen a dos usuarios distantes:
 
-* **Descripción:** Como usuario registrado, quiero editar mi información básica (nombre, bio y foto de perfil), para que otros miembros me reconozcan en la red.  
-* **Prioridad MoSCoW:** Must Have  
-* **Estimación:** 2 SP  
-* **Criterios de Aceptación:**  
-  1. Permite actualizar nombre visible, biografía corta y avatar.  
-  2. La imagen se valida para formatos .jpg, .png y .webp con un peso máximo de 5MB.  
-  3. La imagen se sube a un bucket/servicio cloud y se almacena únicamente la URL pública optimizada en BD.  
-  4. Los datos actualizados se reflejan inmediatamente en la vista pública del perfil.
+MATCH p \= shortestPath((origen:Usuario {id: \\(origenId})-\[:SIGUE\*..6\]-\>(destino:Usuario {id:\\)destinoId}))  
+WHERE origen \<\> destino  
+RETURN \[n IN nodes(p) | n.username\] AS rutaConexion,   
+       length(p) AS saltosTotales;
 
-### **US-03: Creación de Publicaciones con Texto e Imágenes**
+### **5\. Tendencias en la Red Extendida (Posts con más interacción a 1 y 2 saltos)**
 
-* **Descripción:** Como usuario activo, quiero crear publicaciones que incluyan texto y fotos, para compartir experiencias con otros usuarios.  
-* **Prioridad MoSCoW:** Must Have  
-* **Estimación:** 3 SP  
-* **Criterios de Aceptación:**  
-  1. Permite publicar solo texto, solo imagen o combinación de ambos.  
-  2. El texto admite hasta un límite definido (ej. 1,000 caracteres) y valida que no se envíen posts vacíos.  
-  3. Soporta subida múltiple de imágenes (hasta 4 por publicación) con redimensionamiento previo a la persistencia.  
-  4. La publicación se asocia inequívocamente al user\_id de la sesión activa con marca de tiempo created\_at.
+Detecta publicaciones populares generadas dentro de la red cercana del usuario:
 
-### **US-04: Reacciones y Comentarios**
+MATCH (u:Usuario {id: \$userId})-\[:SIGUE\*1..2\]-\>(autor:Usuario)-\[:PUBLICA\]-\>(p:Post)  
+WHERE p.fechaCreacion \>= datetime() \- duration('P7D')  
+MATCH (reactor:Usuario)-\[:REACCIONA\]-\>(p)  
+RETURN p.id AS id,   
+       p.texto AS texto,   
+       autor.username AS autor,   
+       count(reactor) AS totalReacciones  
+ORDER BY totalReacciones DESC  
+LIMIT 10;
 
-* **Descripción:** Como usuario, quiero reaccionar ("Me gusta") y comentar las publicaciones de otros miembros, para interactuar activamente con la comunidad.  
-* **Prioridad MoSCoW:** Should Have  
-* **Estimación:** 3 SP  
-* **Criterios de Aceptación:**  
-  1. La reacción de "Me gusta" funciona como un toggle (dar y retirar like).  
-  2. Restricción única en BD que impide a un usuario registrar más de un like simultáneo en un mismo post.  
-  3. Los comentarios permiten texto plano, se persisten con fecha y se listan bajo el post correspondiente.  
-  4. Los contadores totales de likes y comentarios se calculan de manera atómica o indexada.
+## **4\. Product Backlog y Consenso de Estimación**
 
-### **US-05: Feed con Scroll Infinito (Ventana Temporal de 14 Días)**
+Consenso de Planning Poker aplicando la secuencia Fibonacci (![][image3]) y mapeo a historias de usuario:
 
-* **Descripción:** Como usuario, quiero ver un feed cronológico con scroll infinito que contenga únicamente posts de las últimas 2 semanas, para mantenerme actualizado con contenido relevante y vigente.  
-* **Prioridad MoSCoW:** Must Have  
-* **Estimación:** 5 SP
+| ID | Épica | Historia de Usuario | Consenso | Criterio de Aceptación Principal |
+| :---- | :---- | :---- | :---- | :---- |
+| **US-01** | Identidad | Registro, login y perfil con foto | **2 SP** | Autenticación JWT, subida de avatar a MinIO y persistencia de nodo (:Usuario) en Neo4j. |
+| **US-02** | Grafo | Seguir, dejar de seguir y consultar red | **2 SP** | Creación/destrucción atómica de la relación \[:SIGUE\]. |
+| **US-03** | Grafo | Sugerencia inteligente de contactos | **3 SP** | Implementación de Cypher recursivo de 2do grado ponderado por amigos mutuos. |
+| **US-04** | Contenido | Crear publicación con multimedia S3 | **3 SP** | Separación estricta: binario a MinIO, URL y metadata a nodo (:Post) con relación \[:PUBLICA\]. |
+| **US-05** | Feed | Feed generado por grafo social | **5 SP** | Recorrido (u)-\[:SIGUE\]-\>()-\[:PUBLICA\]-\>(p) ordenado cronológicamente. |
+| **US-06** | Contenido | Reaccionar a publicaciones (Likes) | **2 SP** | Gestión idempotente de la relación \[:REACCIONA {tipo: 'LIKE'}\]. |
+| **US-07** | Chat | Mensajería instantánea 1 a 1 | **5 SP** | Comunicación bidireccional mediante WebSocket en Quarkus sin polling. |
+| **US-08** | Alertas | Notificaciones Web Push al publicar | **5 SP** | Disparo de eventos hacia la suscripción del Service Worker del navegador ante nuevos posts. |
 
-#### **Criterios de Aceptación (Gherkin):**
+## **5\. Especificaciones en Formato Gherkin (Historias Complejas)**
 
-Característica: Feed de publicaciones con ventana temporal de 14 días y scroll infinito
+### **US-05: Feed Basado en Grafo Social**
 
-  Escenario: Carga inicial exitosa de publicaciones recientes  
-    Dado que el usuario autenticado ingresa a la vista principal del feed  
-    Y existen publicaciones creadas dentro de los últimos 14 días  
-    Cuando la vista carga completamente  
-    Entonces el sistema debe mostrar un lote inicial de 10 publicaciones  
-    Y las publicaciones deben estar ordenadas cronológicamente de forma descendente (más recientes primero)  
-    Y no debe mostrarse ninguna publicación con fecha de creación mayor a 14 días respecto al momento actual.
+Característica: Generación del feed a partir de relaciones de seguimiento
 
-  Escenario: Carga incremental mediante scroll infinito (Cursor-based pagination)  
-    Dado que el usuario ha visualizado el primer lote de 10 publicaciones  
-    Cuando el usuario hace scroll y alcanza el 80% de la altura visible de la página  
-    Entonces el cliente solicita el siguiente lote enviando como cursor la fecha/ID del último elemento cargado  
-    Y el backend responde con el siguiente bloque de hasta 10 publicaciones  
-    Y los nuevos elementos se anexan al final de la lista sin recargar la página ni perder la posición de scroll actual.
+  Escenario: Usuario visualiza publicaciones de sus seguidos  
+    Dado que el usuario "Carlos" sigue a "Beatriz" en el grafo  
+    Y "Beatriz" ha publicado un post hace 1 hora  
+    Y "David" (a quien "Carlos" NO sigue) ha publicado un post hace 5 minutos  
+    Cuando "Carlos" solicita su feed principal  
+    Entonces la consulta Cypher recorre (:Usuario {username: 'Carlos'})-\[:SIGUE\]-\>()-\[:PUBLICA\]-\>(:Post)  
+    Y el feed muestra la publicación de "Beatriz"  
+    Y la publicación de "David" es excluida del resultado.
 
-  Escenario: Fin del contenido dentro de la ventana de 14 días  
-    Dado que el usuario ha hecho scroll continuo a través de todas las publicaciones disponibles  
-    Cuando no existan más registros cuya fecha de creación esté dentro de los últimos 14 días  
-    Entonces la petición de paginación retorna un resultado vacío  
-    Y el cliente deja de emitir peticiones adicionales por scroll  
-    Y se muestra un mensaje informativo indicando: "Estás al día. No hay más publicaciones recientes".
+### **US-07: Chat en Tiempo Real por WebSockets**
 
-  Escenario: Feed sin actividad reciente  
-    Dado que no existen publicaciones registradas en los últimos 14 días  
-    Cuando el usuario ingresa al feed principal  
-    Entonces el sistema debe mostrar un estado vacío (empty state)  
-    Y debe mostrar un botón interactivo que invite a crear la primera publicación.
+Característica: Mensajería bidireccional en tiempo real
 
-### **US-06: Mensajería Directa 1 a 1 en Tiempo Real**
+  Escenario: Envío instantáneo de mensaje entre usuarios conectados  
+    Dado que "Usuario 1" y "Usuario 2" tienen una sesión WebSocket abierta en Quarkus  
+    Cuando "Usuario 1" transmite un paquete de texto dirigido a "Usuario 2"  
+    Entonces el socket enruta el mensaje directamente a la sesión activa del destinatario  
+    Y el mensaje aparece en la pantalla del "Usuario 2" sin que este realice peticiones HTTP de sondeo (polling).
 
-* **Descripción:** Como usuario, quiero intercambiar mensajes de texto directos con otro usuario en tiempo real, para sostener conversaciones privadas.  
-* **Prioridad MoSCoW:** Could Have  
-* **Estimación:** 5 SP
+### **US-08: Notificación Web Push ante Nueva Publicación**
 
-#### **Criterios de Aceptación (Gherkin):**
+Característica: Notificación fuera del navegador con Web Push
 
-Característica: Chat privado uno a uno mediante WebSockets
+  Escenario: Notificar a un seguidor cuando se genera contenido nuevo  
+    Dado que "Anthony" sigue a "Carlos" en el grafo social  
+    Y "Anthony" tiene suscripción Web Push activa registrada en su nodo  
+    Cuando "Carlos" crea una nueva publicación vía REST  
+    Entonces el backend detecta los seguidores suscritos mediante Cypher  
+    Y Quarkus envía la carga útil cifrada con llaves VAPID al servicio Push del navegador  
+    Y el Service Worker de "Anthony" despliega una notificación nativa del sistema operativo.
 
-  Escenario: Envío y recepción de mensaje en tiempo real con ambos usuarios en línea  
-    Dado que el "Usuario A" y el "Usuario B" tienen una sesión activa y el WebSocket conectado  
-    Y el "Usuario B" se encuentra dentro del chat con el "Usuario A"  
-    Cuando el "Usuario A" escribe "Hola, ¿cómo estás?" y presiona enviar  
-    Entonces el mensaje se persiste en la base de datos con estado "entregado"  
-    Y el servidor emite el evento WebSocket hacia el canal privado del "Usuario B"  
-    Y el mensaje aparece en la pantalla del "Usuario B" con una latencia menor a 500 ms sin recargar la página.
+## **6\. Infraestructura de Contenedores (docker-compose.yml)**
 
-  Escenario: Envío de mensaje a un destinatario desconectado (Offline)  
-    Dado que el "Usuario B" no tiene una sesión activa (desconectado)  
-    Cuando el "Usuario A" envía el mensaje "Quedo atento a tu respuesta"  
-    Entonces el sistema persiste el mensaje en la base de datos con estado "pendiente"  
-    Y confirma al "Usuario A" mediante un indicador visual que el mensaje fue recibido por el servidor  
-    Y cuando el "Usuario B" inicie sesión posteriormente, el mensaje se listará en su historial de conversación.
+Guarda este archivo en la raíz del proyecto para orquestar la arquitectura completa:
 
-  Escenario: Carga paginada de historial de conversación previa  
-    Dado que dos usuarios tienen un historial acumulado de 80 mensajes  
-    Cuando el "Usuario A" abre la conversación con el "Usuario B"  
-    Entonces el sistema carga inicialmente los últimos 20 mensajes de la conversación  
-    Y al hacer scroll hacia el extremo superior del chat, se solicitan los 20 mensajes anteriores de forma incremental.
+version: '3.8'
 
-  Escenario: Reconexión ante pérdida temporal de conectividad  
-    Dado que el "Usuario A" sufre una desconexión de red mientras tiene el chat activo  
-    Cuando intenta presionar enviar sobre un nuevo mensaje  
-    Entonces el cliente muestra un indicador visual de reintento/error junto al mensaje  
-    Y al restablecerse la red, el socket se reconecta automáticamente y despacha el mensaje en cola.
+services:  
+  \# Base de Datos de Grafos  
+  neo4j:  
+    image: neo4j:5.20-community  
+    container\_name: redsocial-neo4j  
+    ports:  
+      \- "7474:7474" \# Web Browser UI  
+      \- "7687:7687" \# Protocolo Bolt  
+    environment:  
+      \- NEO4J\_AUTH=neo4j/password123  
+      \- NEO4J\_PLUGINS=\["apoc"\]  
+    volumes:  
+      \- neo4j\_data:/data  
+    networks:  
+      \- red-distribuida  
+    healthcheck:  
+      test: \["CMD", "cypher-shell", "-u", "neo4j", "-p", "password123", "RETURN 1"\]  
+      interval: 10s  
+      timeout: 5s  
+      retries: 5
 
-### **US-07: Notificaciones de Interacción en Tiempo Real**
+  \# Object Storage compatible con S3  
+  minio:  
+    image: minio/minio:RELEASE.2024-05-10T01-41-38Z  
+    container\_name: redsocial-minio  
+    ports:  
+      \- "9000:9000" \# API S3  
+      \- "9001:9001" \# Consola Web  
+    environment:  
+      \- MINIO\_ROOT\_USER=minioadmin  
+      \- MINIO\_ROOT\_PASSWORD=minioadmin  
+    command: server /data \--console-address ":9001"  
+    volumes:  
+      \- minio\_data:/data  
+    networks:  
+      \- red-distribuida
 
-* **Descripción:** Como autor de contenido o dueño de un perfil, quiero recibir avisos inmediatos cuando otros usuarios interactúen con mis publicaciones o perfil, para mantenerme al tanto de la actividad de mi comunidad.  
-* **Prioridad MoSCoW:** Could Have  
-* **Estimación:** 5 SP
+  \# Inicializador automático del Bucket en MinIO  
+  minio-init:  
+    image: minio/mc:latest  
+    depends\_on:  
+      \- minio  
+    networks:  
+      \- red-distribuida  
+    entrypoint: \>  
+      /bin/sh \-c "  
+      /usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin;  
+      /usr/bin/mc mb local/redsocial-media \--ignore-existing;  
+      /usr/bin/mc anonymous set download local/redsocial-media;  
+      exit 0;  
+      "
 
-#### **Criterios de Aceptación (Gherkin):**
+  \# Backend Quarkus (Java)  
+  backend:  
+    build:  
+      context: ./backend  
+      dockerfile: Dockerfile.jvm  
+    container\_name: redsocial-backend  
+    ports:  
+      \- "8080:8080"  
+    environment:  
+      \- QUARKUS\_NEO4J\_URI=bolt://neo4j:7687  
+      \- QUARKUS\_NEO4J\_AUTHENTICATION\_USERNAME=neo4j  
+      \- QUARKUS\_NEO4J\_AUTHENTICATION\_PASSWORD=password123  
+      \- S3\_ENDPOINT=http://minio:9000  
+      \- S3\_BUCKET=redsocial-media  
+      \- S3\_ACCESS\_KEY=minioadmin  
+      \- S3\_SECRET\_KEY=minioadmin  
+      \- VAPID\_PUBLIC\_KEY=BGw-ejemploClavePublicaVAPID...  
+      \- VAPID\_PRIVATE\_KEY=ejemploClavePrivadaVAPID...  
+      \- VAPID\_SUBJECT=mailto:admin@redsocial.edu.ec  
+    depends\_on:  
+      neo4j:  
+        condition: service\_healthy  
+      minio:  
+        condition: service\_started  
+    networks:  
+      \- red-distribuida
 
-Característica: Sistema reactivo de notificaciones push/in-app por eventos
+  \# Frontend React  
+  frontend:  
+    build:  
+      context: ./frontend  
+      dockerfile: Dockerfile  
+    container\_name: redsocial-frontend  
+    ports:  
+      \- "3000:80"  
+    depends\_on:  
+      \- backend  
+    networks:  
+      \- red-distribuida
 
-  Escenario: Notificación instantánea por nuevo "Me gusta"  
-    Dado que el "Usuario B" está navegando en la plataforma con sesión activa  
-    Cuando el "Usuario A" da "Me gusta" a una publicación creada por el "Usuario B"  
-    Entonces el backend dispara un evento de dominio "PostLikedEvent"  
-    Y el servicio de notificaciones persiste el registro con el campo "is\_read \= false"  
-    Y el "Usuario B" recibe una alerta flotante (toast) y se incrementa en 1 su contador de notificaciones no leídas en la barra de navegación.
+networks:  
+  red-distribuida:  
+    driver: bridge
 
-  Escenario: Prevención de auto-notificación  
-    Dado que el "Usuario A" interactúa comentando o reaccionando en su propia publicación  
-    Cuando la acción se procesa y persiste exitosamente  
-    Entonces el sistema no debe generar ninguna notificación ni evento hacia el propio "Usuario A".
+volumes:  
+  neo4j\_data:  
+  minio\_data:
 
-  Escenario: Visualización y marcado de notificaciones como leídas  
-    Dado que el usuario tiene 3 notificaciones no leídas marcadas en la campana de alertas  
-    Cuando hace clic sobre el panel de notificaciones  
-    Entonces se despliega el listado con las 3 alertas destacadas visualmente  
-    Y al hacer clic sobre una notificación particular, el sistema actualiza su estado a "is\_read \= true"  
-    Y el contador se decrementa automáticamente en 1  
-    Y el sistema redirige al usuario mediante un deep link hacia la publicación o comentario correspondiente.
+## **7\. Instrucciones para Levantar el Entorno**
 
-  Escenario: Agrupación de notificaciones masivas concurrentes (Debounce / Agregación)  
-    Dado que 5 usuarios distintos reaccionan a una misma publicación del "Usuario B" en un intervalo menor a 60 segundos  
-    Cuando el backend procesa los eventos  
-    Entonces el centro de notificaciones debe agrupar los mensajes mostrando: "A \[Usuario X\], \[Usuario Y\] y a 3 personas más les gustó tu publicación"  
-    Y evita enviar 5 notificaciones independientes consecutivas.
+### **Paso 1: Generar Llaves VAPID para Web Push**
 
-## **4\. Consideraciones Técnicas de Implementación**
+Ejecuta en tu terminal para obtener el par de claves públicas y privadas:
 
-1. **Estrategia para el Feed (US-05):**  
-   * Indexar la columna de fecha en la tabla de publicaciones: CREATE INDEX idx\_posts\_created\_at ON posts (created\_at DESC);  
-   * Consulta backend con paginación por cursor:  
-     SELECT id, user\_id, content, media\_urls, created\_at  
-     FROM posts  
-     WHERE created\_at \>= NOW() \- INTERVAL '14 days'  
-       AND created\_at \< :last\_seen\_cursor  
-     ORDER BY created\_at DESC  
-     LIMIT 10;
+npx web-push generate-vapid-keys
 
-2. **Infraestructura WebSocket (US-06 y US-07):**  
-   * Emplear canales dedicados autenticados por token JWT en el *handshake* inicial.  
-   * Canales de chat: /user/{user\_id}/queue/messages  
-   * Canales de notificaciones: /user/{user\_id}/queue/notifications
+Copia los valores e ingrésalos en las variables de entorno de Quarkus (VAPID\_PUBLIC\_KEY y VAPID\_PRIVATE\_KEY).
 
-[image1]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFgAAAAZCAYAAAC1ken9AAAE1ElEQVR4Xu2Yz4scRRTHZ1gFfxIE1zX7o2tnVl0wgsHFH4eQkxFBxUOUCHryYP4AITmLNwWRPQZFchAxetBDjAcR8ZCLoggRRRNIJJrDokFhc0hM4vc7VTX9+nVVd9VML4LmA4/tevXqW69eV1f3bK9XoV9tXiOR5LolB/5H6Wr9QqcrSU/Xepqu9Nt0fL/92xbdAalTVBOrE/OnUh0/udrkIzMJTNQfDAa7tdMSiK7TX15efsUYc6goimfn5uZu1gGJSJ1HcX2DDmgD63gM456WvpXhcBt8O5NWokAuL9t8THRdwQ2AQW/A/oBdhl3Fgg5W4hLh5LDPRftd6sH2yjhJaKGY/x3Yp76N8a+6vPbIuDpVNYxZd/NL+7YSlADzh53z7cXFxRsLY97CDXxIxun5x+COPozknxkOhxhnzkxR4E0IvOjbKysrS/D9DDsLG8jYJhD7O4vBhbC9tLT0INoXYB+ieZ0Kj8J1YMxFV1huoCfgntFxbWDcd7omKO4c/O/12vKRNceA7aZS4MgdieAWclU+zmg/T5/XTFFE/DGO6bnkMXYX2pdgR3OOCs6J+MPan4KqyyZ0fir9fWrfVubTsKrmAueBsb/CLihfpcCWhoQcMgJnHncib9xzwj2iSSm/wGE1zH3OrYFH1CgIuvtC+TSSX+BwQh73GP0AO4Hj4g7d3waOhvuQy0tcHOx12dc8s8UdEadg6zwC8fckbFPHtYGjcxvGfeDyoG1C74WmLII9JlrgYHgrboG887t0XwoY94ux5/cxvid0f0k4Pzf/+bJtdqC9MRi/nMLjQszPz980WsuowAWfpo91DPGKQWUMjBQ4HyzC8E4b+2KZCrzs7oLOb7Aja2tr1+v+HIz9suAOXJP+YEEciP9E3KgZU744855ME93BebhH6jO+/XXfJPBFAr2j2ABXcP247s9BPFVP6b4QLDzir9gjwbKwsLDI9VHHn8NNN2hMVwU29nv4lG/Pzs7eQpMxOiHZxvx78ATcL1ws8mG3a9alvwljd9o30lctsM6iDvNG/Gk8RQult+/9Wfk0FpipYGfew8XrPkEf/QdQjDulE5pfyR2D4u3WBfS4HJg4P9NG8FeTKXfMfu9v0iFOZ0O4+sb++Kl8lzfpFPZz7HucwbfrPvgvyXxacYsLFpig7zIP+V7k49rYXzw4dwvuYGHFX+LM4yK58HEBJfxx4fo3/A7j7kH7NOxsURamUYeg74TceQP3VYOivNkrt29Ap7Kz2c+jaZ90Ov8G1rVD+ev4xyZgZ2DbfRyuj3MyUawKgfHevpBHBNp/wv7Wx4YH+k8yBn8/MvYmUeOkjqvrlIXhlTsrj1MHBXrf6RwZBznqOlUwdpk6sB9hb8POwy721J0I0h5RZXV19dZYgXPgCzC2IMKvBSziNdghrO+RByJfD206PfvWH+nwp7vu9MR0RH1mePxRh8dd7J89U1PYt2nwiEiFxRtgR+kdF6cf7KcOd6b25zKJTiifOmlRYwb22/br0pMp4IDGXizoy/p43W6m1CnJU7CEdDST6GaD3XvvtB/6BC+eu+1V6g4ukXGlznTUdVKz+RfpJsWYSsw/PVunHEFPqNtVmnv/P3RWh86EHLl6sfiYP53pFYKkyqbG1bEj4+PjPVvJ1s36DxMkUNxa70r+AAAAAElFTkSuQmCC>
+### **Paso 2: Despliegue con Docker Compose**
 
-[image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAAWCAYAAADNX8xBAAAA90lEQVR4Xp1RMQ7CMAxsByYGxFShtnHVL/QfDPyJLzD0LUwM7LyEnQlXbdL4HIeKk6I05/Pl4hbFRpRi96f4ywA2eEjDlMJAugETZezQICPNw0qQRqjjvaVqlQqsKioh2ISoz7wpASJ3Qu4vENEVOQDOSmeczl3XPdjsIlkBRYQnx1e0bXNmo1cQrX1ooP8aoqqqPZvd67puAsnDuzE58j7OOy6LpzevTzT8NfivJB5zIicT2cDhz/swDLspUd/3h6XggYnyufRfK7AFDfRTpzObPMm5Y6qukBOw0TLcny8wC4BI5x23tiKMREjYF1i8Agr9WSZYVV/zpx9sZC4EEQAAAABJRU5ErkJggg==>
+Desde la carpeta raíz del proyecto, ejecuta:
+
+docker compose up \--build \-d
+
+### **Paso 3: Verificación de Servicios**
+
+* **Frontend React:** http://localhost:3000  
+* **Backend Quarkus:** http://localhost:8080 (Consola Dev: http://localhost:8080/q/dev)  
+* **Neo4j Browser:** http://localhost:7474 (Usuario: neo4j, Contraseña: password123)  
+* **MinIO Console:** http://localhost:9001 (Usuario: minioadmin, Contraseña: minioadmin)
+
+[image1]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACYAAAAWCAYAAACsR+4DAAAC1ElEQVR4Xr1WO2gUURSdIQYUREFdJezOezu72yjYONhpI7FIYRMEC0sLrf0gClZWgoUEq8UmhQhiIViIYiGpRNtACpsogYC9RVCznvs+M/fd+QbEA4+ZOfe+886777MbRS2IJSEQxtuy/yP2amWv+f8I7cPKCrf3KCPWWt9SSr3G8wPaAxYqXhmDnCnlyliBcj8C71ed4aC1uoDEDZh6h+e14XD4SGn9A+8vB4PBEZnvQBPZQnzCqOI1MgZu93q9gwEJjEajwxhjLcuyeRkzIFF0XkfSPXzOyTj4zzA4i8SI6HcA/d6kaXpC8KdJD22G9hvtG9oCz7GIo8RqfB2Px0kQItckQM6DgIH1gQqeQ84v5FznUXBPYXiHcxbefxxppe5iJWqMWSC2ifaJc7QMD9HxDwa/WLcpEcuQ9xPtGeed4BfOSShjrK5iFoi90nyCbsYzPK+yvBIgfknbqq5ynjgaWO4pjtCYzLPfiC25rWKBSm058VFOVgA59ykPbUXwxC1zTkJWTFoj+BXJDwiMkXDhNEfpVG27yp70HImQGInyXAlprArwsaB4jptxB2P5BPZ57lijsaJ/81JaUCwwT4MFa1ux+ZGzTHnYX0+4cFgx2atAt4q1GguBu+W4tvfbGl0rPAZuP2K7uA4WC7ZssIsx2uPwsZ36+xDiN8iYMleFhZd2l+cMbcPHJMzEzKmsRxdjiC2RVk5k2Zl5EFOl9PckSc56HmKnUtz2dD1MJpNDxJVrYQR3MbHnkgfmqNrQuQyN98jbQbtD5uzJC7cM+Ju5MR6gZYHIIplEW+n3+0dZ2MDmy0OhX/ibv8p4PUo6m2gfA7IZhUAoZb/qfivb4dVir7FOFQ5S6iArUFUxArbAedqr9qt8quvg82h/o/+VINgdxQyrnm4LNPwf8ygt4VSZfl2n04CqJaX/UxjkMb7zC7gZ+YTeNvzPq0L7DNozukHq/AWfKbw8dTTLQQAAAABJRU5ErkJggg==>
+
+[image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADQAAAAXCAYAAABEQGxzAAADtklEQVR4Xs1WPWhUQRB+RyKoiCgaxbvL7Xt3hxAipDgUBG3EQkGsBe0stEhloWilhYVgFbQJEVEQEexCQDBISolFLAyKGEhASRFEFAxqIOc3t7N5s/P2nTHcoR8M73a++dmdnTfvouifoKAVAc16EPAKqAQcq58pspqNIT/DBuEHWn/YsGWq1fxG86wPbeLFcbxD6wjaRa7hc8IYcxfyDnKv0WhsEnQGpVJpV8QhXJxisbg1tbBArH1O2MdDrVbb0zYXgu6G8yykqWRM2xLq9fp2cCOQTzjULTzPQ55DvlYqlVPantEbiE+yII0Qb7PiVyVPkLyidP1bSZ9C5svlcilg0YMNX0bS9+DrPhVF4M5REjwHfSaNAu4Ib+amMMgA/Fljb77Z399/QO+0gtuD/rRS+xA3NUGV0jwdhhIkSWI0R4B+L/i3kDtRphYW4C7xgU5KvTY2tgOGsfEm9nJd0a3CQKpa7wGOFygZDI9rjm6ENzKeptfbaMV4AJtvONyQ5vjAc7JgemjQGvwAZJYUVBzKC/sz0hC6R2IdBhmRs2s3AWrFMcgqDQJJ6KPZA1W+oygNqSdwu62YQLvJOMa22xStKQ7tCc9nzpY6CTc349aRrosDHJfpilONrRhdOQUNbcTCxsNEKsPmI+QzZEAZUXx6P2lzmVaRO0K+afl+UCHJz5lxJ00EzyFVvOnQVJlkzut7HZBalZO/wu+dmsfNzfE7kXk/JeD/Wh4a65ecP+E1dZItbuBMEWupL8lpXuq5BRaYy1RdgpKw3YjVpNlsnAq1mx61GcBmqq+vb5tYD3PcYV7PhN5zgUKEKz6IhNQOVzRrbAs1ZZIQDLcGffQChXPfoUVNSNDNBsaxNxxMzhT2wH25Qi+u5gzfkG2jMOiwvOElzRESO+GIn9ScBOyGzFonpGWB7jD7v4BcWyOY/ElktVrdT2tKVrHfj8dY9nrGUXrlcsLJG4D/IfBf4ji5imWPoNZgvO9P4P4sCijafa10MNwBNHyshuNwYBrPW2iNjV6kNa76qHOWoP9O4N9Axp2PBPRL5J///6rg/oEs+hPOP1iSxK0Ps6cUMDwcMu0G5W3ID+7Hh3h3PuB5jLjc2kWtg09zwCd4jkJ+QZbpv522JRjbJq1ukBKrL3+OHXWLB+gSyJzWEwo1tBvIUQS/EapszsEKsI/JjwTVHgz5dgN2P3bq/gX8Mds5dCvuH9G9dHmR8/QW7dkuwCXsVOL8OLmMT+SadQydyhcuXZt4YSqs/R/gdvYbnFMROAr4wSIAAAAASUVORK5CYII=>
+
+[image3]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFgAAAAZCAYAAAC1ken9AAAE1ElEQVR4Xu2Yz4scRRTHZ1gFfxIE1zX7o2tnVl0wgsHFH4eQkxFBxUOUCHryYP4AITmLNwWRPQZFchAxetBDjAcR8ZCLoggRRRNIJJrDokFhc0hM4vc7VTX9+nVVd9VML4LmA4/tevXqW69eV1f3bK9XoV9tXiOR5LolB/5H6Wr9QqcrSU/Xepqu9Nt0fL/92xbdAalTVBOrE/OnUh0/udrkIzMJTNQfDAa7tdMSiK7TX15efsUYc6goimfn5uZu1gGJSJ1HcX2DDmgD63gM456WvpXhcBt8O5NWokAuL9t8THRdwQ2AQW/A/oBdhl3Fgg5W4hLh5LDPRftd6sH2yjhJaKGY/x3Yp76N8a+6vPbIuDpVNYxZd/NL+7YSlADzh53z7cXFxRsLY97CDXxIxun5x+COPozknxkOhxhnzkxR4E0IvOjbKysrS/D9DDsLG8jYJhD7O4vBhbC9tLT0INoXYB+ieZ0Kj8J1YMxFV1huoCfgntFxbWDcd7omKO4c/O/12vKRNceA7aZS4MgdieAWclU+zmg/T5/XTFFE/DGO6bnkMXYX2pdgR3OOCs6J+MPan4KqyyZ0fir9fWrfVubTsKrmAueBsb/CLihfpcCWhoQcMgJnHncib9xzwj2iSSm/wGE1zH3OrYFH1CgIuvtC+TSSX+BwQh73GP0AO4Hj4g7d3waOhvuQy0tcHOx12dc8s8UdEadg6zwC8fckbFPHtYGjcxvGfeDyoG1C74WmLII9JlrgYHgrboG887t0XwoY94ux5/cxvid0f0k4Pzf/+bJtdqC9MRi/nMLjQszPz980WsuowAWfpo91DPGKQWUMjBQ4HyzC8E4b+2KZCrzs7oLOb7Aja2tr1+v+HIz9suAOXJP+YEEciP9E3KgZU744855ME93BebhH6jO+/XXfJPBFAr2j2ABXcP247s9BPFVP6b4QLDzir9gjwbKwsLDI9VHHn8NNN2hMVwU29nv4lG/Pzs7eQpMxOiHZxvx78ATcL1ws8mG3a9alvwljd9o30lctsM6iDvNG/Gk8RQult+/9Wfk0FpipYGfew8XrPkEf/QdQjDulE5pfyR2D4u3WBfS4HJg4P9NG8FeTKXfMfu9v0iFOZ0O4+sb++Kl8lzfpFPZz7HucwbfrPvgvyXxacYsLFpig7zIP+V7k49rYXzw4dwvuYGHFX+LM4yK58HEBJfxx4fo3/A7j7kH7NOxsURamUYeg74TceQP3VYOivNkrt29Ap7Kz2c+jaZ90Ov8G1rVD+ev4xyZgZ2DbfRyuj3MyUawKgfHevpBHBNp/wv7Wx4YH+k8yBn8/MvYmUeOkjqvrlIXhlTsrj1MHBXrf6RwZBznqOlUwdpk6sB9hb8POwy721J0I0h5RZXV19dZYgXPgCzC2IMKvBSziNdghrO+RByJfD206PfvWH+nwp7vu9MR0RH1mePxRh8dd7J89U1PYt2nwiEiFxRtgR+kdF6cf7KcOd6b25zKJTiifOmlRYwb22/br0pMp4IDGXizoy/p43W6m1CnJU7CEdDST6GaD3XvvtB/6BC+eu+1V6g4ukXGlznTUdVKz+RfpJsWYSsw/PVunHEFPqNtVmnv/P3RWh86EHLl6sfiYP53pFYKkyqbG1bEj4+PjPVvJ1s36DxMkUNxa70r+AAAAAElFTkSuQmCC>
