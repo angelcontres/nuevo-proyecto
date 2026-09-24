@@ -1,3 +1,13 @@
+```typescript
+Desarrollado por:
+
+- Paulo Orrala
+- Carlos Patiño
+- Angel Villon
+```
+```
+```
+
 # **Product Backlog & Planificación de Sistema \- Red Social**
 
 Este documento consolida el análisis de requerimientos, la estimación consensuada en Story Points (Planning Poker), el plan de Sprints y los criterios de aceptación en formato BDD/Gherkin para el desarrollo de la plataforma.
