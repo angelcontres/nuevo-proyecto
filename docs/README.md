@@ -17,3 +17,9 @@ Bienvenido al directorio de documentación técnica del sistema de **Red Social 
    - Las 5 consultas Cypher obligatorias (Feed por grafo, sugerencias de segundo grado, intersecciones, shortest path, tendencias).
    - Product Backlog con consenso de Planning Poker (Fibonacci).
    - Criterios de aceptación detallados en formato BDD/Gherkin (US-05, US-07, US-08).
+
+3. [**Flujo de Trabajo Git - GitFlow Lite (git-workflow.md)**](./git-workflow.md):
+   - Topología de ramas (`develop` como rama principal única, ramas `feature/`, `fix/`, `docs/`).
+   - Ciclo de vida estandarizado del desarrollo paso a paso.
+   - Convención de mensajes de commit (Conventional Commits).
+   - Plantilla de Pull Request y proceso de revisión en equipo.
