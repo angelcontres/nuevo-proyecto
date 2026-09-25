@@ -1,4 +1,4 @@
-﻿```typescript
+```typescript
 Desarrollado por:
 
 - Paulo Orrala
@@ -134,57 +134,29 @@ count(reactor) AS totalReacciones
 ORDER BY totalReacciones DESC  
 LIMIT 10;
 
-## **4\. Product Backlog y Consenso de Estimación**
+## **4. Product Backlog Priorizado y Matriz de Decisión**
 
-Consenso de Planning Poker aplicando la secuencia Fibonacci (![][image3]) y mapeo a historias de usuario:
+Consenso de Planning Poker aplicando la secuencia Fibonacci, priorización matemática con algoritmo **RICE** y categorización **MoSCoW**:
 
-| ID        | Épica     | Historia de Usuario                     | Consenso | Criterio de Aceptación Principal                                                               |
-| :-------- | :-------- | :-------------------------------------- | :------- | :--------------------------------------------------------------------------------------------- |
-| **US-01** | Identidad | Registro, login y perfil con foto       | **2 SP** | Autenticación JWT, subida de avatar a MinIO y persistencia de nodo (:Usuario) en Neo4j.        |
-| **US-02** | Grafo     | Seguir, dejar de seguir y consultar red | **2 SP** | Creación/destrucción atómica de la relación \[:SIGUE\].                                        |
-| **US-03** | Grafo     | Sugerencia inteligente de contactos     | **3 SP** | Implementación de Cypher recursivo de 2do grado ponderado por amigos mutuos.                   |
-| **US-04** | Contenido | Crear publicación con multimedia S3     | **3 SP** | Separación estricta: binario a MinIO, URL y metadata a nodo (:Post) con relación \[:PUBLICA\]. |
-| **US-05** | Feed      | Feed generado por grafo social          | **5 SP** | Recorrido (u)-\[:SIGUE\]-\>()-\[:PUBLICA\]-\>(p) ordenado cronológicamente.                    |
-| **US-06** | Contenido | Reaccionar a publicaciones (Likes)      | **2 SP** | Gestión idempotente de la relación \[:REACCIONA {tipo: 'LIKE'}\].                              |
-| **US-07** | Chat      | Mensajería instantánea 1 a 1            | **5 SP** | Comunicación bidireccional mediante WebSocket en Quarkus sin polling.                          |
-| **US-08** | Alertas   | Notificaciones Web Push al publicar     | **5 SP** | Disparo de eventos hacia la suscripción del Service Worker del navegador ante nuevos posts.    |
+| ID | Épica | Historia de Usuario | MoSCoW | RICE | Estimación | Sprint | Rama Git Sugerida |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
+| **US-01** | Identidad | Registro, sesión y perfil con avatar en MinIO | **Must** | **150.0** | **2 SP** | Sprint 1 | `feature/US-01-auth-perfil` |
+| **US-02** | Grafo | Seguir, dejar de seguir y consultar red | **Must** | **140.0** | **2 SP** | Sprint 1 | `feature/US-02-grafo-follow` |
+| **US-04** | Contenido | Crear publicación con multimedia S3 | **Must** | **90.0** | **3 SP** | Sprint 1 | `feature/US-04-crear-post-s3` |
+| **US-05** | Feed | Feed generado por grafo social (2 saltos) | **Must** | **60.0** | **5 SP** | Sprint 2 | `feature/US-05-feed-grafo` |
+| **US-06** | Contenido | Reaccionar a publicaciones (Likes) | **Should** | **75.0** | **2 SP** | Sprint 2 | `feature/US-06-reacciones-likes` |
+| **US-03** | Grafo | Sugerencia inteligente de contactos (2do grado) | **Should** | **53.3** | **3 SP** | Sprint 2 | `feature/US-03-sugerencias-amigos` |
+| **US-09** | Grafo | Conexiones y seguidores en común | **Should** | **40.0** | **3 SP** | Sprint 2 | `feature/US-09-amigos-en-comun` |
+| **US-07** | Chat | Mensajería instantánea 1 a 1 (WebSockets) | **Must** | **40.0** | **5 SP** | Sprint 3 | `feature/US-07-chat-websocket` |
+| **US-08** | Alertas | Notificaciones Web Push (VAPID) | **Should** | **32.0** | **5 SP** | Sprint 3 | `feature/US-08-push-notifications` |
+| **US-10** | Grafo | Camino más corto (Shortest Path 6 grados) | **Could** | **20.0** | **3 SP** | Sprint 3 | `feature/US-10-shortest-path` |
+| **US-11** | Métricas | Tendencias y viralidad en red extendida | **Could** | **20.0** | **3 SP** | Sprint 3 | `feature/US-11-tendencias-red` |
 
-## **5\. Especificaciones en Formato Gherkin (Historias Complejas)**
+> 📌 **Documentación Completa para Desarrolladores:**
+> - [**Especificación Integral BDD/Gherkin y Matriz de Trazabilidad (docs/architecture-and-backlog.md)**](./docs/architecture-and-backlog.md)
+> - [**Guía Táctica con Tarjetas Linear/Jira y Comandos cURL (docs/backlog-programadores.md)**](./docs/backlog-programadores.md)
+> - [**Dataset Semilla Cypher (docker/neo4j-seed.cql)**](./docker/neo4j-seed.cql)
 
-### **US-05: Feed Basado en Grafo Social**
-
-Característica: Generación del feed a partir de relaciones de seguimiento
-
-Escenario: Usuario visualiza publicaciones de sus seguidos  
-Dado que el usuario "Carlos" sigue a "Beatriz" en el grafo  
-Y "Beatriz" ha publicado un post hace 1 hora  
-Y "David" (a quien "Carlos" NO sigue) ha publicado un post hace 5 minutos  
-Cuando "Carlos" solicita su feed principal  
-Entonces la consulta Cypher recorre (:Usuario {username: 'Carlos'})-\[:SIGUE\]-\>()-\[:PUBLICA\]-\>(:Post)  
-Y el feed muestra la publicación de "Beatriz"  
-Y la publicación de "David" es excluida del resultado.
-
-### **US-07: Chat en Tiempo Real por WebSockets**
-
-Característica: Mensajería bidireccional en tiempo real
-
-Escenario: Envío instantáneo de mensaje entre usuarios conectados  
-Dado que "Usuario 1" y "Usuario 2" tienen una sesión WebSocket abierta en Quarkus  
-Cuando "Usuario 1" transmite un paquete de texto dirigido a "Usuario 2"  
-Entonces el socket enruta el mensaje directamente a la sesión activa del destinatario  
-Y el mensaje aparece en la pantalla del "Usuario 2" sin que este realice peticiones HTTP de sondeo (polling).
-
-### **US-08: Notificación Web Push ante Nueva Publicación**
-
-Característica: Notificación fuera del navegador con Web Push
-
-Escenario: Notificar a un seguidor cuando se genera contenido nuevo  
-Dado que "Anthony" sigue a "Carlos" en el grafo social  
-Y "Anthony" tiene suscripción Web Push activa registrada en su nodo  
-Cuando "Carlos" crea una nueva publicación vía REST  
-Entonces el backend detecta los seguidores suscritos mediante Cypher  
-Y Quarkus envía la carga útil cifrada con llaves VAPID al servicio Push del navegador  
-Y el Service Worker de "Anthony" despliega una notificación nativa del sistema operativo.
 
 ## **6\. Infraestructura de Contenedores (docker-compose.yml)**
 
