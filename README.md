@@ -264,28 +264,82 @@ volumes:
 neo4j\_data:  
 minio\_data:
 
-## **7\. Instrucciones para Levantar el Entorno**
+## **7. Guía de Despliegue Local y Desarrollo para Programadores**
 
-### **Paso 1: Generar Llaves VAPID para Web Push**
+Para un manual detallado paso a paso con diagramas y solución de problemas, consulta: [**docs/guia-desarrollo-local.md**](./docs/guia-desarrollo-local.md).
 
-Ejecuta en tu terminal para obtener el par de claves públicas y privadas:
+---
 
-npx web-push generate-vapid-keys
+### **Modo 1: Desarrollo Ágil con Hot-Reload (Recomendado para Programar) ⚡**
 
-Copia los valores e ingrésalos en las variables de entorno de Quarkus (VAPID\_PUBLIC\_KEY y VAPID\_PRIVATE\_KEY).
+Permite modificar el código de Java (Quarkus) y React (Vite) con recarga automática en milisegundos sin reconstruir imágenes Docker.
 
-### **Paso 2: Despliegue con Docker Compose**
+#### **Paso 1: Levantar los servicios de datos en Docker**
+```bash
+docker compose up -d neo4j minio minio-init
+```
 
-Desde la carpeta raíz del proyecto, ejecuta:
+#### **Paso 2: Cargar el dataset de prueba en Neo4j (Datos Semilla)**
+Inyecta los 6 usuarios de prueba, relaciones sociales y publicaciones para validar todos los endpoints:
+- **Windows (PowerShell):**
+  ```powershell
+  Get-Content docker\neo4j-seed.cql | docker exec -i redsocial-neo4j cypher-shell -u neo4j -p password123
+  ```
+- **Linux / macOS / Git Bash:**
+  ```bash
+  cat docker/neo4j-seed.cql | docker exec -i redsocial-neo4j cypher-shell -u neo4j -p password123
+  ```
 
-docker compose up \--build \-d
+#### **Paso 3: Iniciar Backend Quarkus en modo Dev**
+Abre una terminal:
+```bash
+cd backend
+mvn quarkus:dev
+```
+- API REST & WebSockets: `http://localhost:8080`
+- Swagger UI interactivo: `http://localhost:8080/q/swagger-ui`
+- Quarkus Dev UI: `http://localhost:8080/q/dev`
 
-### **Paso 3: Verificación de Servicios**
+#### **Paso 4: Iniciar Frontend React con Vite**
+Abre otra terminal:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+- Interfaz Web SPA: `http://localhost:3000` (con proxy automático a Quarkus `:8080` sin problemas de CORS).
 
-- **Frontend React:** <http://localhost:3000>
-- **Backend Quarkus:** <http://localhost:8080> (Consola Dev: <http://localhost:8080/q/dev>)
-- **Neo4j Browser:** <http://localhost:7474> (Usuario: neo4j, Contraseña: password123)
-- **MinIO Console:** <http://localhost:9001> (Usuario: minioadmin, Contraseña: minioadmin)
+---
+
+### **Modo 2: Despliegue Completo en Contenedores (Demo / Producción) 🐳**
+
+Para arrancar la arquitectura completa 100% contenerizada en una red bridge:
+
+```bash
+# 1. Construir y levantar todo en segundo plano:
+docker compose up --build -d
+
+# 2. Cargar datos semilla en el contenedor:
+docker exec -i redsocial-neo4j cypher-shell -u neo4j -p password123 < docker/neo4j-seed.cql
+
+# 3. Ver logs en tiempo real:
+docker compose logs -f
+```
+
+---
+
+### **Directorio de Puertos y Consolas de Monitoreo**
+
+| Servicio | URL Local | Credenciales por Defecto | Propósito / Funcionalidad |
+| :--- | :--- | :--- | :--- |
+| **Frontend Web** | [http://localhost:3000](http://localhost:3000) | N/A | SPA con muro social, sugerencias y chat. |
+| **Quarkus Dev UI** | [http://localhost:8080/q/dev](http://localhost:8080/q/dev) | N/A | Monitoreo de extensiones, logs y métricas. |
+| **Swagger UI** | [http://localhost:8080/q/swagger-ui](http://localhost:8080/q/swagger-ui) | N/A | Prueba interactiva de endpoints JAX-RS. |
+| **Neo4j Browser** | [http://localhost:7474](http://localhost:7474) | `neo4j` / `password123` | Explorador visual del grafo e interprete Cypher. |
+| **MinIO Console** | [http://localhost:9001](http://localhost:9001) | `minioadmin` / `minioadmin` | Administrador visual de objetos y buckets S3. |
+| **API S3 MinIO** | [http://localhost:9000](http://localhost:9000) | `minioadmin` / `minioadmin` | Endpoint S3 para subida de binarios multimedia. |
+| **Protocolo Bolt** | `bolt://localhost:7687` | `neo4j` / `password123` | Conexión directa TCP del backend al grafo. |
+
 
 [image1]: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACYAAAAWCAYAAACsR+4DAAAC1ElEQVR4Xr1WO2gUURSdIQYUREFdJezOezu72yjYONhpI7FIYRMEC0sLrf0gClZWgoUEq8UmhQhiIViIYiGpRNtACpsogYC9RVCznvs+M/fd+QbEA4+ZOfe+886777MbRS2IJSEQxtuy/yP2amWv+f8I7cPKCrf3KCPWWt9SSr3G8wPaAxYqXhmDnCnlyliBcj8C71ed4aC1uoDEDZh6h+e14XD4SGn9A+8vB4PBEZnvQBPZQnzCqOI1MgZu93q9gwEJjEajwxhjLcuyeRkzIFF0XkfSPXzOyTj4zzA4i8SI6HcA/d6kaXpC8KdJD22G9hvtG9oCz7GIo8RqfB2Px0kQItckQM6DgIH1gQqeQ84v5FznUXBPYXiHcxbefxxppe5iJWqMWSC2ifaJc7QMD9HxDwa/WLcpEcuQ9xPtGeed4BfOSShjrK5iFoi90nyCbsYzPK+yvBIgfknbqq5ynjgaWO4pjtCYzLPfiC25rWKBSm058VFOVgA59ykPbUXwxC1zTkJWTFoj+BXJDwiMkXDhNEfpVG27yp70HImQGInyXAlprArwsaB4jptxB2P5BPZ57lijsaJ/81JaUCwwT4MFa1ux+ZGzTHnYX0+4cFgx2atAt4q1GguBu+W4tvfbGl0rPAZuP2K7uA4WC7ZssIsx2uPwsZ36+xDiN8iYMleFhZd2l+cMbcPHJMzEzKmsRxdjiC2RVk5k2Zl5EFOl9PckSc56HmKnUtz2dD1MJpNDxJVrYQR3MbHnkgfmqNrQuQyN98jbQbtD5uzJC7cM+Ju5MR6gZYHIIplEW+n3+0dZ2MDmy0OhX/ibv8p4PUo6m2gfA7IZhUAoZb/qfivb4dVir7FOFQ5S6iArUFUxArbAedqr9qt8quvg82h/o/+VINgdxQyrnm4LNPwf8ygt4VSZfl2n04CqJaX/UxjkMb7zC7gZ+YTeNvzPq0L7DNozukHq/AWfKbw8dTTLQQAAAABJRU5ErkJggg==
 [image2]: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADQAAAAXCAYAAABEQGxzAAADtklEQVR4Xs1WPWhUQRB+RyKoiCgaxbvL7Xt3hxAipDgUBG3EQkGsBe0stEhloWilhYVgFbQJEVEQEexCQDBISolFLAyKGEhASRFEFAxqIOc3t7N5s/P2nTHcoR8M73a++dmdnTfvouifoKAVAc16EPAKqAQcq58pspqNIT/DBuEHWn/YsGWq1fxG86wPbeLFcbxD6wjaRa7hc8IYcxfyDnKv0WhsEnQGpVJpV8QhXJxisbg1tbBArH1O2MdDrVbb0zYXgu6G8yykqWRM2xLq9fp2cCOQTzjULTzPQ55DvlYqlVPantEbiE+yII0Qb7PiVyVPkLyidP1bSZ9C5svlcilg0YMNX0bS9+DrPhVF4M5REjwHfSaNAu4Ib+amMMgA/Fljb77Z399/QO+0gtuD/rRS+xA3NUGV0jwdhhIkSWI0R4B+L/i3kDtRphYW4C7xgU5KvTY2tgOGsfEm9nJd0a3CQKpa7wGOFygZDI9rjm6ENzKeptfbaMV4AJtvONyQ5vjAc7JgemjQGvwAZJYUVBzKC/sz0hC6R2IdBhmRs2s3AWrFMcgqDQJJ6KPZA1W+oygNqSdwu62YQLvJOMa22xStKQ7tCc9nzpY6CTc349aRrosDHJfpilONrRhdOQUNbcTCxsNEKsPmI+QzZEAZUXx6P2lzmVaRO0K+afl+UCHJz5lxJ00EzyFVvOnQVJlkzut7HZBalZO/wu+dmsfNzfE7kXk/JeD/Wh4a65ecP+E1dZItbuBMEWupL8lpXuq5BRaYy1RdgpKw3YjVpNlsnAq1mx61GcBmqq+vb5tYD3PcYV7PhN5zgUKEKz6IhNQOVzRrbAs1ZZIQDLcGffQChXPfoUVNSNDNBsaxNxxMzhT2wH25Qi+u5gzfkG2jMOiwvOElzRESO+GIn9ScBOyGzFonpGWB7jD7v4BcWyOY/ElktVrdT2tKVrHfj8dY9nrGUXrlcsLJG4D/IfBf4ji5imWPoNZgvO9P4P4sCijafa10MNwBNHyshuNwYBrPW2iNjV6kNa76qHOWoP9O4N9Axp2PBPRL5J///6rg/oEs+hPOP1iSxK0Ps6cUMDwcMu0G5W3ID+7Hh3h3PuB5jLjc2kWtg09zwCd4jkJ+QZbpv522JRjbJq1ukBKrL3+OHXWLB+gSyJzWEwo1tBvIUQS/EapszsEKsI/JjwTVHgz5dgN2P3bq/gX8Mds5dCvuH9G9dHmR8/QW7dkuwCXsVOL8OLmMT+SadQydyhcuXZt4YSqs/R/gdvYbnFMROAr4wSIAAAAASUVORK5CYII=
