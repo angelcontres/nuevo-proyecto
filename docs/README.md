@@ -15,10 +15,18 @@ Bienvenido al directorio de documentación técnica del sistema de **Red Social 
    - Justificación de tecnologías y matriz de protocolos de comunicación.
    - Modelo de grafos en Neo4j (Nodos `:Usuario`, `:Post` y relaciones `:SIGUE`, `:PUBLICA`, `:REACCIONA`).
    - Las 5 consultas Cypher obligatorias (Feed por grafo, sugerencias de segundo grado, intersecciones, shortest path, tendencias).
-   - Product Backlog con consenso de Planning Poker (Fibonacci).
-   - Criterios de aceptación detallados en formato BDD/Gherkin (US-05, US-07, US-08).
+   - Product Backlog priorizado mediante modelo matemático RICE y MoSCoW (11 historias completas).
+   - Planificación de Sprints (1, 2 y 3) con grafo de dependencias en Mermaid y reglas DoR / DoD.
+   - Criterios de aceptación detallados en formato BDD/Gherkin para las 11 historias.
+   - Matriz de trazabilidad técnica integral.
 
-3. [**Flujo de Trabajo Git - GitFlow Lite (git-workflow.md)**](./git-workflow.md):
+3. [**Guía Táctica del Backlog para Programadores (backlog-programadores.md)**](./backlog-programadores.md):
+   - Tarjetas de desarrollo listas para copiar a Linear / Jira (`TUX-01` a `TUX-11`).
+   - Tareas técnicas exactas por capa hexagonal (Domain, Inbound, Outbound Neo4j/S3/Push).
+   - Contratos JSON y comandos de prueba `cURL` para cada endpoint.
+   - Dataset semilla en Cypher (`docker/neo4j-seed.cql`) con validación inmediata.
+
+4. [**Flujo de Trabajo Git - GitFlow Lite (git-workflow.md)**](./git-workflow.md):
    - Topología de ramas (`develop` como rama principal única, ramas `feature/`, `fix/`, `docs/`).
    - Ciclo de vida estandarizado del desarrollo paso a paso.
    - Convención de mensajes de commit (Conventional Commits).
