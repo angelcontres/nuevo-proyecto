@@ -1,17 +1,22 @@
 # Spec Driven Development (SDD)
 
-> El flujo activo es **OpenSpec**: `openspec/changes/<capa>/<fecha>-<nombre>/...` y
+> El flujo activo es **OpenSpec**: `openspec/changes/us-XX-<nombre>/<capa>/...` y
 > specs canónicos en `openspec/specs/<dominio>/`. La metodología EARS sigue aplicando.
 
 ## Estructura
 
-Cada feature del `ROADMAP.md` tiene una carpeta en `openspec/changes/`:
+Cada feature del `ROADMAP.md` tiene una carpeta raíz por Historia de Usuario en `openspec/changes/`, subdividida por capa:
 
 ```
-specs/<feature-name>/
-├── spec.md           # Requisitos y escenarios Gherkin (EARS notation)
-├── design.md         # Decisiones técnicas de implementación
-└── tasks.md          # Pasos discretos y accionables
+openspec/changes/us-XX-<feature-name>/
+├── back/
+│   ├── spec.md           # Requisitos y escenarios Gherkin (EARS notation)
+│   ├── design.md         # Decisiones técnicas de implementación
+│   └── tasks.md          # Pasos discretos y accionables
+└── front/
+    ├── spec.md
+    ├── design.md
+    └── tasks.md
 ```
 
 ## requirements.md / spec.md — EARS estricto

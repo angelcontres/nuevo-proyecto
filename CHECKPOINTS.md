@@ -12,7 +12,7 @@
 
 ## C2 — El estado es coherente
 
-- [ ] Un solo change activo a la vez por capa (`front`, `back`, `infra`) en `openspec/changes/`.
+- [ ] Un solo change activo a la vez en `openspec/changes/` organizado por historia y capa (ej. `us-01-user-identity/front`).
 - [ ] Toda change archivada tiene un `archive-report.md` que declara honestamente su estado.
 - [ ] El estado real vive en OpenSpec + Engram, no en bitácoras sueltas.
 

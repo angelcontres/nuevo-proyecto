@@ -8,7 +8,7 @@
 ## 1. Estado actual (checkpoint)
 
 - **Rama/Contexto**: `<rama-actual>`
-- **Change OpenSpec**: `openspec/changes/<capa>/YYYY-MM-DD-nombre-us/`
+- **Change OpenSpec**: `openspec/changes/us-XX-nombre-us/<capa>/`
   - Estado de artefactos: `[x] proposal.md`, `[ ] design.md`, `[ ] tasks.md`, `[ ] spec.md`
 - **Feature en desarrollo**: `<descripción breve de lo que se estaba haciendo>`
 

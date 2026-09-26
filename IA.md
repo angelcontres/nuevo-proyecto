@@ -17,7 +17,7 @@ En este repositorio, tú actúas como el Agente Coordinador e Implementador prin
 ### Protocolo de Trabajo (Spec Driven Development)
 
 1. Antes de empezar cualquier tarea, lee `openspec/config.yaml` y `openspec/ROADMAP.md`.
-2. Para proponer un cambio, crea la estructura en `openspec/changes/<capa>/YYYY-MM-DD-nombre-us/` (proposal, design, tasks, spec).
+2. Para proponer un cambio, crea la estructura en `openspec/changes/us-XX-nombre-us/<capa>/` (proposal, design, tasks, spec).
 3. Pide confirmación al humano antes de pasar a la implementación real en `backend/` o `frontend/`.
 4. Una vez implementado, ejecuta la validación (compilación) y si es exitosa, archiva la spec en `openspec/changes/archive/`.
 
